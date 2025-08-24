@@ -149,7 +149,17 @@ app.post("/login", (req, res) => {
 });
 
 
+// end point to access all the loggedin users 
 
+app.get("/users/:userId", (req, res) => {
+    const loggedInUersId = req.params.userId
+    User.find({ _id: { $ne: loggedInUersId } }).then((users) => {
+        res.status(200).json(users)
+    }).catch((error) => {
+        console.log("Error fetching users", error);
+        res.status(500).json({Message:"Error Fetching Users"})
+    })
+})
 
 
 
