@@ -157,15 +157,49 @@ app.get("/users/:userId", (req, res) => {
         res.status(200).json(users)
     }).catch((error) => {
         console.log("Error fetching users", error);
-        res.status(500).json({Message:"Error Fetching Users"})
+        res.status(500).json({ Message: "Error Fetching Users" })
     })
 })
 
+// endpoint to send a friend request
+app.post("/friend-request", async (req, res) => {
+    const { currentUserId, selectedUserId } = req.body;
 
+    try {
+        //update the recepient's friendRequestsArray!
+        await User.findByIdAndUpdate(selectedUserId, {
+            $push: { freindRequests: currentUserId },
+        });
 
+        //update the sender's sentFriendRequests array
+        await User.findByIdAndUpdate(currentUserId, {
+            $push: { sentFriendRequests: selectedUserId },
+        });
 
+        res.sendStatus(200);
+    } catch (error) {
+        res.sendStatus(500);
+    }
+});
 
+// endpoint to show all the friend requests of a particaular user
+app.get("/friend-request/:userId", async (req, res) => {
+    try {
+        const { userId } = req.params;
 
+        //fetch the user document based on the User id
+        const user = await User.findById(userId)
+            .populate("freindRequests", "name email image")
+            .lean();
+
+        const freindRequests = user?.freindRequests;
+
+        res.json(freindRequests);
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
 
 
 
