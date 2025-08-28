@@ -182,7 +182,7 @@ app.post("/friend-request", async (req, res) => {
     }
 });
 
-// endpoint to show all the friend requests of a particaular user
+// endpoint to show all the friend requests recieved a particaular user
 app.get("/friend-request/:userId", async (req, res) => {
     try {
         const { userId } = req.params;
@@ -200,6 +200,32 @@ app.get("/friend-request/:userId", async (req, res) => {
         res.status(500).json({ message: "Internal Server Error" });
     }
 });
+
+
+// endpoint to show the number of friend request and the people user sent to
+app.get("/friend-requests/sent/:userId", async (req, res) => {
+    try {
+        const { userId } = req.params
+
+        const user = await User.findById(userId).populate("sentFriendRequests","name email image").lean()
+
+        const sentFriendRequests = user?.sentFriendRequests
+        
+        res.json(sentFriendRequests)
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ message: "Internal Server Error" })
+    }
+})
+
+
+
+
+
+
+
+
+
 
 
 
