@@ -8,6 +8,7 @@ import JWT from "jsonwebtoken"
 import dotenv from "dotenv";
 import User from "./models/user";
 import Message from "./models/message";
+import { request } from 'http';
 
 
 
@@ -207,16 +208,90 @@ app.get("/friend-requests/sent/:userId", async (req, res) => {
     try {
         const { userId } = req.params
 
-        const user = await User.findById(userId).populate("sentFriendRequests","name email image").lean()
+        const user = await User.findById(userId).populate("sentFriendRequests", "name email image").lean()
 
         const sentFriendRequests = user?.sentFriendRequests
-        
+
         res.json(sentFriendRequests)
     } catch (error) {
         console.log(error);
         res.status(500).json({ message: "Internal Server Error" })
     }
 })
+
+
+// endpoint to accept a friend request
+app.post("/friend-request/accept", async (req, res) => {
+    try {
+        const { senderId, recepientId } = req.body;
+
+        // Retrieve both users
+        const sender = await User.findById(senderId);
+        const recepient = await User.findById(recepientId);
+
+        if (!sender || !recepient) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Add each other as friends (prevent duplicates)
+        if (!sender.friends.includes(recepientId)) {
+            sender.friends.push(recepientId);
+        }
+        if (!recepient.friends.includes(senderId)) {
+            recepient.friends.push(senderId);
+        }
+
+        // Remove request from recipient's friendRequests
+        recepient.freindRequests = recepient.freindRequests?.filter(
+            (request) => request.toString() !== senderId.toString()
+        ) || [];
+
+        // Remove request from sender's sentFriendRequests
+        sender.sentFriendRequests = sender.sentFriendRequests?.filter(
+            (request) => request.toString() !== recepientId.toString()
+        ) || [];
+
+        await sender.save();
+        await recepient.save();
+
+        res.status(200).json({ message: "Friend Request accepted successfully" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+// endpoint to decline a friend request
+app.post("/friend-request/reject", async (req, res) => {
+    const { senderId, recepientId } = req.body;
+
+    // console.log("friend-request/reject was hit");
+    
+    // Retrieve both users
+    const sender = await User.findById(senderId);
+    const recepient = await User.findById(recepientId);
+    
+    if (!sender || !recepient) {
+        return res.status(404).json({ message: "User not found" });
+    }
+    
+    // Remove request from recipient's friendRequests
+    recepient.freindRequests = recepient.freindRequests?.filter(
+        (request) => request.toString() !== senderId.toString()
+    ) || [];
+
+    // Remove request from sender's sentFriendRequests
+    sender.sentFriendRequests = sender.sentFriendRequests?.filter(
+        (request) => request.toString() !== recepientId.toString()
+    ) || [];
+
+    await sender.save();
+    await recepient.save();
+
+    res.status(200).json({ message: "Friend Request rejected successfully" });
+
+})
+
 
 
 
