@@ -266,15 +266,15 @@ app.post("/friend-request/reject", async (req, res) => {
     const { senderId, recepientId } = req.body;
 
     // console.log("friend-request/reject was hit");
-    
+
     // Retrieve both users
     const sender = await User.findById(senderId);
     const recepient = await User.findById(recepientId);
-    
+
     if (!sender || !recepient) {
         return res.status(404).json({ message: "User not found" });
     }
-    
+
     // Remove request from recipient's friendRequests
     recepient.freindRequests = recepient.freindRequests?.filter(
         (request) => request.toString() !== senderId.toString()
@@ -290,6 +290,45 @@ app.post("/friend-request/reject", async (req, res) => {
 
     res.status(200).json({ message: "Friend Request rejected successfully" });
 
+})
+
+// endpoint to fetch friends of the user
+app.get("/accepted-friends/:userId", async (req, res) => {
+
+    try {
+        const { userId } = req.params
+        const user = await User.findById(userId).populate(
+            "friends",
+            "name email image"
+        )
+        const acceptedFriends = user?.friends
+        res.json(acceptedFriends)
+    } catch (error) {
+        console.log("error=>", error);
+        res.status(500).json({ message: "Internel Server Error" })
+
+    }
+})
+
+// endpoint to check if the user is friend with that other user
+app.get("/friends/:userId", async (req, res) => {
+    try {
+        console.log("/friends was hit");
+
+        const { userId } = req.params
+
+        User.findById(userId).populate("friends").then((user) => {
+            if (!user) {
+                return res.status(404).json({ message: "User not found" })
+            }
+            const friendsIds = user?.friends?.map((item) => item._id)
+            res.status(200).json(friendsIds)
+        })
+
+    } catch (error) {
+        console.log("error=>", error);
+        res.status(500).json({ message: "Internel Server Error" })
+    }
 })
 
 
