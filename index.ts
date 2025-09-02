@@ -7,8 +7,6 @@ import cors from "cors"
 import JWT from "jsonwebtoken"
 import dotenv from "dotenv";
 import User from "./models/user";
-import Message from "./models/message";
-import { request } from 'http';
 
 
 
@@ -39,6 +37,8 @@ mongoose.connect(mongoURL).then(() => {
 }).catch(() => {
     console.log("error connected to mongodb");
 })
+
+
 
 
 
