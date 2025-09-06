@@ -7,14 +7,17 @@ import cors from "cors"
 import JWT from "jsonwebtoken"
 import dotenv from "dotenv";
 import User from "./models/user";
-
+import http from 'http';
+import { Server } from 'socket.io';
+import messages from './routes/messages';
 
 
 
 dotenv.config();
 const app = express();
 const jwtsecret = process.env.JWT_SECRET || ""
-
+const server = http.createServer(app);
+const io = new Server(server);
 const port = 8000
 
 
@@ -39,7 +42,7 @@ mongoose.connect(mongoURL).then(() => {
 })
 
 
-
+app.use("/routes/messages", messages)
 
 
 
@@ -351,6 +354,6 @@ app.get("/friends/:userId", async (req, res) => {
 
 
 
-app.listen(port, () => {
+server.listen(port, () => {
     console.log(`the server has started on port ${port}`);
 })
