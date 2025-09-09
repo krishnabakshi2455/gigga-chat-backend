@@ -1,76 +1,94 @@
 import { Server, Socket } from 'socket.io';
 import JWT from 'jsonwebtoken';
-import User from '../models/user';
+// import User from '../models/user'; // Uncomment when you have the model
+// import Message from '../models/Message'; // Uncomment when you have the model
 
-const jwtsecret = process.env.JWT_SECRET || "";
+const jwtsecret = process.env.JWT_SECRET || "your-secret-key";
 
 const socket_messages = (io: Server) => {
+    // console.log('✅ Socket handler initialized');
+
+    // io.on('connection', (socket: Socket) => {
+    //     console.log('✅ User connected:', socket.data.userId);
+
+    //     // Join user to their own room for private messages
+    //     socket.join(socket.data.userId);
+
+    //     // Send connection confirmation 
+    //     socket.emit('connected', {
+    //         message: 'Successfully connected to socket server',
+    //         userId: socket.data.userId,
+    //         socketId: socket.id
+    //     });
+
+    //     // ... rest of your connection handler
+    // });
     // Middleware for authentication
     io.use((socket: any, next) => {
         const token = socket.handshake.auth.token;
+        console.log('🔐 Socket connection attempt with token:', token ? 'Present' : 'Missing');
 
         if (!token) {
+            console.log('❌ Authentication error: No token provided');
             return next(new Error('Authentication error: No token provided'));
         }
 
         try {
             const decoded = JWT.verify(token, jwtsecret) as any;
             socket.data.userId = decoded.userId;
+            console.log('✅ User authenticated:', socket.data.userId);
             next();
         } catch (error) {
+            console.log('❌ Authentication error: Invalid token', error);
             next(new Error('Authentication error: Invalid token'));
         }
     });
 
     io.on('connection', (socket: Socket) => {
-        console.log('User connected:', socket.data.userId);
+        console.log('✅ User connected:', socket.data.userId);
 
         // Join user to their own room for private messages
         socket.join(socket.data.userId);
 
+        // Send connection confirmation
+        socket.emit('connected', {
+            message: 'Successfully connected to socket server',
+            userId: socket.data.userId
+        });
+
         // Handle sending messages
         socket.on('send_message', async (data) => {
             try {
-                const { receiverId, message } = data;
-
-                // Save message to database (you'll need to create a Message model)
-                // const newMessage = new Message({ sender: socket.data.userId, receiver: receiverId, content: message });
-                // await newMessage.save();
+                console.log('📨 Received message:', data);
+                const { receiverId, message, messageType } = data;
 
                 // Emit to receiver
                 socket.to(receiverId).emit('receive_message', {
                     senderId: socket.data.userId,
                     message,
+                    messageType: messageType || 'text',
                     timestamp: new Date()
                 });
 
                 // Send confirmation to sender
-                socket.emit('message_sent', { success: true });
+                socket.emit('message_sent', {
+                    success: true,
+                    message: 'Message sent successfully'
+                });
+
+                console.log('✅ Message delivered to:', receiverId);
 
             } catch (error) {
-                console.error('Error sending message:', error);
+                console.error('❌ Error sending message:', error);
                 socket.emit('message_error', { error: 'Failed to send message' });
             }
         });
 
-        // Handle typing indicators
-        socket.on('typing_start', (data) => {
-            socket.to(data.receiverId).emit('user_typing', {
-                userId: socket.data.userId,
-                isTyping: true
-            });
-        });
-
-        socket.on('typing_stop', (data) => {
-            socket.to(data.receiverId).emit('user_typing', {
-                userId: socket.data.userId,
-                isTyping: false
-            });
-        });
+        // Add other event handlers...
 
         // Handle disconnect
-        socket.on('disconnect', () => {
-            console.log('User disconnected:', socket.data.userId);
+        socket.on('disconnect', (reason) => {
+            console.log('❌ User disconnected:', socket.data.userId, 'Reason:', reason);
         });
     });
 };

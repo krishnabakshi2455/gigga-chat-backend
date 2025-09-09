@@ -18,38 +18,37 @@ const jwtsecret = process.env.JWT_SECRET || ""
 const server = http.createServer(app);
 const port = 8000
 
-export const io = new Server(server);
+export const io = new Server(server, {
+    cors: {
+        origin: "*", // Allow all origins in development
+        methods: ["GET", "POST"]
+    }
+});
 
 app.use(cors());
-
 app.use(bodyparser.urlencoded({ extended: false }));
-
-
-app.use(bodyparser.json())
-
-app.use(passport.initialize())
+app.use(bodyparser.json());
+app.use(passport.initialize());
 
 const mongoURL = process.env.MONGODB_URL;
 
 if (!mongoURL) {
     throw new Error("❌ MONGODB_URL is not defined in environment variables.");
 }
+
 mongoose.connect(mongoURL).then(() => {
     console.log("connected to mongodb");
 }).catch(() => {
     console.log("error connected to mongodb");
-})
+});
 
+// Use the messages router for HTTP routes
+app.use("/api/messages", messages);
 
-app.use("/routes/socket.chat.ts", socket_messages)
-app.use("/routes/messages.ts", messages)
-
-
-
+// Initialize socket.io with the server
+socket_messages(io);
 
 //route for registration of the user
-
-// input register
 app.post("/register", (req, res) => {
     const { name, email, password, image } = req.body;
 
@@ -67,7 +66,6 @@ app.post("/register", (req, res) => {
             res.status(500).json({ message: "Error registering the user!" });
         });
 });
-
 
 // google register
 app.post("/googleauth", async (req, res) => {
@@ -102,7 +100,6 @@ app.post("/googleauth", async (req, res) => {
     }
 });
 
-
 //function to create a token for the user
 const createToken = (userId: any) => {
     // Set the token payload
@@ -116,10 +113,7 @@ const createToken = (userId: any) => {
     return token;
 };
 
-
-
-
-// //endpoint for logging in of that particular user
+//endpoint for logging in of that particular user
 app.post("/login", (req, res) => {
     const { email, password } = req.body;
 
@@ -152,9 +146,7 @@ app.post("/login", (req, res) => {
         });
 });
 
-
 // end point to access all the loggedin users 
-
 app.get("/users/:userId", (req, res) => {
     const loggedInUersId = req.params.userId
     User.find({ _id: { $ne: loggedInUersId } }).then((users) => {
@@ -205,7 +197,6 @@ app.get("/friend-request/:userId", async (req, res) => {
     }
 });
 
-
 // endpoint to show the number of friend request and the people user sent to
 app.get("/friend-requests/sent/:userId", async (req, res) => {
     try {
@@ -221,7 +212,6 @@ app.get("/friend-requests/sent/:userId", async (req, res) => {
         res.status(500).json({ message: "Internal Server Error" })
     }
 })
-
 
 // endpoint to accept a friend request
 app.post("/friend-request/accept", async (req, res) => {
@@ -268,8 +258,6 @@ app.post("/friend-request/accept", async (req, res) => {
 app.post("/friend-request/reject", async (req, res) => {
     const { senderId, recepientId } = req.body;
 
-    // console.log("friend-request/reject was hit");
-
     // Retrieve both users
     const sender = await User.findById(senderId);
     const recepient = await User.findById(recepientId);
@@ -292,12 +280,10 @@ app.post("/friend-request/reject", async (req, res) => {
     await recepient.save();
 
     res.status(200).json({ message: "Friend Request rejected successfully" });
-
 })
 
 // endpoint to fetch friends of the user
 app.get("/accepted-friends/:userId", async (req, res) => {
-
     try {
         const { userId } = req.params
         const user = await User.findById(userId).populate(
@@ -309,7 +295,6 @@ app.get("/accepted-friends/:userId", async (req, res) => {
     } catch (error) {
         console.log("error=>", error);
         res.status(500).json({ message: "Internel Server Error" })
-
     }
 })
 
@@ -334,26 +319,7 @@ app.get("/friends/:userId", async (req, res) => {
     }
 })
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 server.listen(port, () => {
-    console.log(`the server has started on port ${port}`);
-})
+    console.log(`Server running on http://localhost:${port}`);
+    console.log(`WebSocket server ready for connections`);
+});
