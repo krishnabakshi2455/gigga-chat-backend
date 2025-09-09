@@ -18,6 +18,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
+
 // Send a message (text or image) - NEW ROUTE
 router.post('/send', upload.single('imageFile'), async (req, res) => {
     try {

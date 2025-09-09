@@ -9,17 +9,16 @@ import dotenv from "dotenv";
 import User from "./models/user";
 import http from 'http';
 import { Server } from 'socket.io';
+import socket_messages from './routes/socket.chat';
 import messages from './routes/messages';
-
-
 
 dotenv.config();
 const app = express();
 const jwtsecret = process.env.JWT_SECRET || ""
 const server = http.createServer(app);
-const io = new Server(server);
 const port = 8000
 
+export const io = new Server(server);
 
 app.use(cors());
 
@@ -42,7 +41,8 @@ mongoose.connect(mongoURL).then(() => {
 })
 
 
-app.use("/routes/messages", messages)
+app.use("/routes/socket.chat.ts", socket_messages)
+app.use("/routes/messages.ts", messages)
 
 
 
