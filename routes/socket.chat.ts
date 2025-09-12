@@ -1,32 +1,13 @@
 import { Server, Socket } from 'socket.io';
 import JWT from 'jsonwebtoken';
-// import User from '../models/user'; // Uncomment when you have the model
-// import Message from '../models/Message'; // Uncomment when you have the model
-
 const jwtsecret = process.env.JWT_SECRET || "your-secret-key";
 
 const socket_messages = (io: Server) => {
-    // console.log('✅ Socket handler initialized');
-
-    // io.on('connection', (socket: Socket) => {
-    //     console.log('✅ User connected:', socket.data.userId);
-
-    //     // Join user to their own room for private messages
-    //     socket.join(socket.data.userId);
-
-    //     // Send connection confirmation 
-    //     socket.emit('connected', {
-    //         message: 'Successfully connected to socket server',
-    //         userId: socket.data.userId,
-    //         socketId: socket.id
-    //     });
-
-    //     // ... rest of your connection handler
-    // });
-    // Middleware for authentication
     io.use((socket: any, next) => {
         const token = socket.handshake.auth.token;
         console.log('🔐 Socket connection attempt with token:', token ? 'Present' : 'Missing');
+        console.log("token", token);
+        
 
         if (!token) {
             console.log('❌ Authentication error: No token provided');
