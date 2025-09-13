@@ -1,12 +1,10 @@
 import { Server, Socket } from 'socket.io';
 import JWT from 'jsonwebtoken';
-const jwtsecret = process.env.JWT_SECRET || "your-secret-key";
 
 const socket_messages = (io: Server) => {
     io.use((socket: any, next) => {
         const token = socket.handshake.auth.token;
         console.log('🔐 Socket connection attempt with token:', token ? 'Present' : 'Missing');
-        console.log("token", token);
         
 
         if (!token) {
@@ -15,7 +13,7 @@ const socket_messages = (io: Server) => {
         }
 
         try {
-            const decoded = JWT.verify(token, jwtsecret) as any;
+            const decoded = JWT.verify(token, process.env.JWT_SECRET!) as any;
             socket.data.userId = decoded.userId;
             console.log('✅ User authenticated:', socket.data.userId);
             next();
