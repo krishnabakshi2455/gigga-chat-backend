@@ -301,7 +301,6 @@ app.get("/accepted-friends/:userId", async (req, res) => {
 // endpoint to check if the user is friend with that other user
 app.get("/friends/:userId", async (req, res) => {
     try {
-        console.log("/friends was hit");
 
         const { userId } = req.params
 

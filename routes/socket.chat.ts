@@ -96,7 +96,12 @@ const socket_messages = (io: Server) => {
             }
 
             // Update user's active conversations
-            const userSocket = connectedUsers.get(userId)!;
+            const userSocket = connectedUsers.get(userId);
+            if (!userSocket) {
+                console.warn(`⚠️ join_conversation: userSocket missing for ${userId}`);
+                return;
+            }
+            
             if (!userSocket.activeConversations.includes(conversationId)) {
                 userSocket.activeConversations.push(conversationId);
             }
