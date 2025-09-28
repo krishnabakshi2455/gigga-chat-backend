@@ -9,6 +9,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/socket.io": "^3.0.2",
     "body-parser": "^1.20.0",
+    "cloudinary": "^2.7.0",
     "cors": "^2.8.5",
     "dotenv": "^16.0.0",
     "expo-server-sdk": "^4.0.0",

@@ -9,8 +9,10 @@ import dotenv from "dotenv";
 import User from "./models/user";
 import http from 'http';
 import { Server } from 'socket.io';
-import socket_messages from './routes/socket.chat';
-import messages from './routes/messages';
+import socket_messages from './controllers/socket.chat';
+import messages from './controllers/messages';
+import cloudinary from './controllers/cloudinary-delete'
+
 
 dotenv.config();
 const app = express();
@@ -43,7 +45,8 @@ mongoose.connect(mongoURL).then(() => {
 });
 
 // Use the messages router for HTTP routes
-app.use("/api/messages", messages);
+app.use("/controllers/messages", messages);
+app.use("controllers/cloudinary-delete",cloudinary)
 
 // Initialize socket.io with the server
 socket_messages(io);
