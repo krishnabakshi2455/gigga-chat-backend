@@ -45,8 +45,8 @@ mongoose.connect(mongoURL).then(() => {
 });
 
 // Use the messages router for HTTP routes
-app.use("/controllers/messages", messages);
-app.use("controllers/cloudinary-delete",cloudinary)
+app.use("/api/messages", messages);
+app.use("/api/delete",cloudinary)
 
 // Initialize socket.io with the server
 socket_messages(io);
