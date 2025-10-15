@@ -11,7 +11,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 import socket_messages from './controllers/socket.chat';
 import messages from './controllers/messages';
-import cloudinary from './controllers/cloudinary-delete'
+import cloudinary from './controllers/delete-message'
 
 
 dotenv.config();
@@ -45,11 +45,20 @@ mongoose.connect(mongoURL).then(() => {
 });
 
 // Use the messages router for HTTP routes
-app.use("/api/messages", messages);
-app.use("/api/delete",cloudinary)
+app.use("/api/", messages);
+app.use("/api/delete", cloudinary)
 
 // Initialize socket.io with the server
 socket_messages(io);
+
+// Health check endpoint - add this with your other routes
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        message: 'Server is running',
+        timestamp: new Date().toISOString()
+    });
+});
 
 //route for registration of the user
 app.post("/register", (req, res) => {
