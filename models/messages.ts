@@ -2,7 +2,6 @@ import mongoose from 'mongoose';
 
 const messageSchema = new mongoose.Schema({
     senderId: { type: String, required: true },
-    receiverId: { type: String, required: true },
     messageType: {
         type: String,
         enum: ['text', 'image', 'audio', 'video'],
@@ -10,8 +9,15 @@ const messageSchema = new mongoose.Schema({
     },
     content: { type: String, required: true },
     timestamp: { type: Date, default: Date.now },
-    conversationId: { type: String, required: true },
     isRead: { type: Boolean, default: false }
 });
 
-export const Message = mongoose.model('Message', messageSchema);
+const conversationSchema = new mongoose.Schema({
+    participants: [{ type: String, required: true }], // Array of user IDs [userA, userB]
+    messages: [messageSchema], // Array of messages
+    lastMessage: { type: Date, default: Date.now },
+    lastMessageContent: { type: String },
+    lastMessageType: { type: String }
+});
+
+export const Conversation = mongoose.model('Conversation', conversationSchema);

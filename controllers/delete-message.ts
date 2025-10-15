@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { cloudinary } from '../config/cloudinary';
 import { CloudinaryDeleteResult, DeleteMediaRequest, DeleteMediaResponse } from '../types';
-import { Message } from '../models/messages';
+import { Conversation } from '../models/messages';
 
 const router = Router();
 
@@ -54,11 +54,11 @@ router.delete('/messages/:messageId', async (req: Request, res: Response) => {
 
         // Try to find and delete from database (if it exists)
         try {
-            const message = await Message.findById(messageId);
+            const message = await Conversation.findById(messageId);
 
             if (message) {
                 messageFoundInDB = true;
-                await Message.findByIdAndDelete(messageId);
+                await Conversation.findByIdAndDelete(messageId);
                 console.log('✅ Message deleted from database:', messageId);
             } else {
                 console.log('⚠️ Message not found in database (may be temporary):', messageId);
@@ -167,9 +167,9 @@ router.post('/messages/batch-delete', async (req: Request, res: Response) => {
 
                 // Try to delete from database
                 try {
-                    const message = await Message.findById(msg.messageId);
+                    const message = await Conversation.findById(msg.messageId);
                     if (message) {
-                        await Message.findByIdAndDelete(msg.messageId);
+                        await Conversation.findByIdAndDelete(msg.messageId);
                         deleted = true;
                     }
                 } catch (dbError: any) {
