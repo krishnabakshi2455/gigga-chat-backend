@@ -14,6 +14,7 @@ const messageSchema = new mongoose.Schema({
 
 const conversationSchema = new mongoose.Schema({
     participants: [{ type: String, required: true }], // Array of user IDs [userA, userB]
+    conversation_id:[{ type: String}],
     messages: [messageSchema], // Array of messages
     lastMessage: { type: Date, default: Date.now },
     lastMessageContent: { type: String },

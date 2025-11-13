@@ -45,8 +45,6 @@ router.post('/messages', async (req, res) => {
                 message: 'Invalid messageType. Must be: text, image, audio, or video'
             });
         }
-
-        const conversationId = generateConversationId(senderId, receiverId);
         const participants = [senderId, receiverId].sort();
 
         // Find or create conversation
@@ -86,6 +84,7 @@ router.post('/messages', async (req, res) => {
             success: true,
             message: 'Message saved successfully',
             data: {
+                conversation_id: conversation._id.toString(),
                 _id: savedMessage._id.toString(),
                 senderId: savedMessage.senderId,
                 messageType: savedMessage.messageType,
@@ -116,6 +115,8 @@ router.get('/messages/:userId/:recipientId', async (req, res) => {
 
         // Find conversation
         const conversation = await Conversation.findOne({ participants });
+        // console.log("conversation", conversation);
+        
 
         if (!conversation) {
             return res.json({
@@ -131,6 +132,7 @@ router.get('/messages/:userId/:recipientId', async (req, res) => {
 
         // Transform to frontend format
         const formattedMessages = messages.map(msg => ({
+            conversation_id: conversation._id.toString(),
             _id: msg._id.toString(),
             messageType: msg.messageType,
             senderId: { _id: msg.senderId },
@@ -141,6 +143,8 @@ router.get('/messages/:userId/:recipientId', async (req, res) => {
             content: msg.content,
             isRead: msg.isRead
         })).reverse(); // Reverse to get chronological order
+        // console.log("formattedMessages", formattedMessages);
+        
 
         res.json({
             success: true,
@@ -157,81 +161,81 @@ router.get('/messages/:userId/:recipientId', async (req, res) => {
 });
 
 // Delete single message
-router.delete('/messages/:messageId', async (req, res) => {
-    try {
-        const { messageId } = req.params;
-        const { conversationId, messageType, mediaUrl } = req.body;
+// router.delete('/messages/:messageId', async (req, res) => {
+//     try {
+//         const { messageId } = req.params;
+//         const { conversationId, messageType, mediaUrl } = req.body;
 
-        console.log('📝 Delete request received:', {
-            messageId,
-            conversationId,
-            messageType,
-            mediaUrl
-        });
+//         console.log('📝 Delete request received:', {
+//             messageId,
+//             conversationId,
+//             messageType,
+//             mediaUrl
+//         });
 
-        if (!messageId || !conversationId) {
-            return res.status(400).json({
-                success: false,
-                message: 'Message ID and Conversation ID are required'
-            });
-        }
+//         if (!messageId || !conversationId) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: 'Message ID and Conversation ID are required'
+//             });
+//         }
 
-        let messageFound = false;
-        let cloudinaryDeleted = false;
+//         let messageFound = false;
+//         let cloudinaryDeleted = false;
 
-        // Find conversation and remove message
-        const conversation = await Conversation.findById(conversationId);
+//         // Find conversation and remove message
+//         const conversation = await Conversation.findById(conversationId);
 
-        if (conversation) {
-            const messageIndex = conversation.messages.findIndex(
-                msg => msg._id.toString() === messageId
-            );
+//         if (conversation) {
+//             const messageIndex = conversation.messages.findIndex(
+//                 msg => msg._id.toString() === messageId
+//             );
 
-            if (messageIndex !== -1) {
-                conversation.messages.splice(messageIndex, 1);
-                await conversation.save();
-                messageFound = true;
-                console.log('✅ Message deleted from conversation:', messageId);
-            }
-        }
+//             if (messageIndex !== -1) {
+//                 conversation.messages.splice(messageIndex, 1);
+//                 await conversation.save();
+//                 messageFound = true;
+//                 console.log('✅ Message deleted from conversation:', messageId);
+//             }
+//         }
 
-        // Delete from Cloudinary if media exists
-        if (mediaUrl && ['image', 'audio', 'video'].includes(messageType)) {
-            const publicId = extractPublicId(mediaUrl);
+//         // Delete from Cloudinary if media exists
+//         if (mediaUrl && ['image', 'audio', 'video'].includes(messageType)) {
+//             const publicId = extractPublicId(mediaUrl);
 
-            if (publicId) {
-                try {
-                    const resourceType = messageType === 'image' ? 'image' : 'video';
-                    const result = await cloudinary.uploader.destroy(publicId, {
-                        resource_type: resourceType,
-                        invalidate: true
-                    });
+//             if (publicId) {
+//                 try {
+//                     const resourceType = messageType === 'image' ? 'image' : 'video';
+//                     const result = await cloudinary.uploader.destroy(publicId, {
+//                         resource_type: resourceType,
+//                         invalidate: true
+//                     });
 
-                    if (result.result === 'ok') {
-                        cloudinaryDeleted = true;
-                        console.log('✅ Cloudinary media deleted');
-                    }
-                } catch (cloudinaryError) {
-                    console.error('Cloudinary deletion error:', cloudinaryError);
-                }
-            }
-        }
+//                     if (result.result === 'ok') {
+//                         cloudinaryDeleted = true;
+//                         console.log('✅ Cloudinary media deleted');
+//                     }
+//                 } catch (cloudinaryError) {
+//                     console.error('Cloudinary deletion error:', cloudinaryError);
+//                 }
+//             }
+//         }
 
-        return res.json({
-            success: true,
-            message: 'Delete operation completed',
-            deletedFromDB: messageFound,
-            deletedFromCloudinary: cloudinaryDeleted
-        });
+//         return res.json({
+//             success: true,
+//             message: 'Delete operation completed',
+//             deletedFromDB: messageFound,
+//             deletedFromCloudinary: cloudinaryDeleted
+//         });
 
-    } catch (error: any) {
-        console.error('Delete error:', error);
-        res.status(500).json({
-            success: false,
-            message: `Internal server error: ${error.message}`
-        });
-    }
-});
+//     } catch (error: any) {
+//         console.error('Delete error:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: `Internal server error: ${error.message}`
+//         });
+//     }
+// });
 
 // Get all conversations for a user
 router.get('/conversations/:userId', async (req, res) => {

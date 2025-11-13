@@ -34,10 +34,11 @@ const getResourceType = (messageType: string, url?: string): 'image' | 'video' |
 router.delete('/messages/:messageId', async (req: Request, res: Response) => {
     try {
         const { messageId } = req.params;
-        const { messageType, mediaUrl } = req.body;
+        const { messageType, mediaUrl, conversation_id } = req.body;
 
         console.log('📝 Delete request received:', {
             messageId,
+            conversation_id,
             messageType,
             mediaUrl
         });
@@ -49,24 +50,47 @@ router.delete('/messages/:messageId', async (req: Request, res: Response) => {
             });
         }
 
+        if (!conversation_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Conversation ID is required'
+            });
+        }
+
         let messageFoundInDB = false;
         let cloudinaryDeleted = false;
 
-        // Try to find and delete from database (if it exists)
+        // Delete message from the conversation's messages array
         try {
-            const message = await Conversation.findById(messageId);
+            const result = await Conversation.findByIdAndUpdate(
+                conversation_id,
+                {
+                    $pull: {
+                        messages: { _id: messageId }
+                    }
+                },
+                { new: true }
+            );
 
-            if (message) {
+            if (result) {
                 messageFoundInDB = true;
-                await Conversation.findByIdAndDelete(messageId);
                 console.log('✅ Message deleted from database:', messageId);
+
+                // Update lastMessage metadata if needed
+                if (result.messages.length > 0) {
+                    const lastMsg = result.messages[result.messages.length - 1];
+                    await Conversation.findByIdAndUpdate(conversation_id, {
+                        lastMessage: lastMsg.timestamp,
+                        lastMessageContent: lastMsg.content,
+                        lastMessageType: lastMsg.messageType
+                    });
+                }
             } else {
-                console.log('⚠️ Message not found in database (may be temporary):', messageId);
+                console.log('⚠️ Conversation not found:', conversation_id);
             }
         } catch (dbError: any) {
-            // If it's a Cast error (invalid ObjectId), it's likely a temp message
             if (dbError.name === 'CastError') {
-                console.log('⚠️ Invalid ObjectId (temporary message):', messageId);
+                console.log('⚠️ Invalid ObjectId:', messageId);
             } else {
                 console.error('❌ Database error:', dbError);
             }
@@ -166,15 +190,35 @@ router.post('/messages/batch-delete', async (req: Request, res: Response) => {
                 let deleted = false;
 
                 // Try to delete from database
-                try {
-                    const message = await Conversation.findById(msg.messageId);
-                    if (message) {
-                        await Conversation.findByIdAndDelete(msg.messageId);
-                        deleted = true;
-                    }
-                } catch (dbError: any) {
-                    if (dbError.name !== 'CastError') {
-                        console.error('DB error:', dbError);
+                if (msg.conversation_id) {
+                    try {
+                        const result = await Conversation.findByIdAndUpdate(
+                            msg.conversation_id,
+                            {
+                                $pull: {
+                                    messages: { _id: msg.messageId }
+                                }
+                            },
+                            { new: true }
+                        );
+
+                        if (result) {
+                            deleted = true;
+
+                            // Update lastMessage metadata if needed
+                            if (result.messages.length > 0) {
+                                const lastMsg = result.messages[result.messages.length - 1];
+                                await Conversation.findByIdAndUpdate(msg.conversation_id, {
+                                    lastMessage: lastMsg.timestamp,
+                                    lastMessageContent: lastMsg.content,
+                                    lastMessageType: lastMsg.messageType
+                                });
+                            }
+                        }
+                    } catch (dbError: any) {
+                        if (dbError.name !== 'CastError') {
+                            console.error('DB error:', dbError);
+                        }
                     }
                 }
 

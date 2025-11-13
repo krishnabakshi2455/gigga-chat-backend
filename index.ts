@@ -11,7 +11,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 import socket_messages from './controllers/socket.chat';
 import messages from './controllers/messages';
-import cloudinary from './controllers/delete-message'
+import delete_message from './controllers/delete-message'
 
 
 dotenv.config();
@@ -46,7 +46,7 @@ mongoose.connect(mongoURL).then(() => {
 
 // Use the messages router for HTTP routes
 app.use("/api/", messages);
-app.use("/api/delete", cloudinary)
+app.use("/api/delete", delete_message)
 
 // Initialize socket.io with the server
 socket_messages(io);
