@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { cloudinary } from '../config/cloudinary';
-import { CloudinaryDeleteResult, DeleteMediaRequest, DeleteMediaResponse } from '../types';
+import { CloudinaryDeleteResult } from '../types';
 import { Conversation } from '../models/messages';
 
 const router = Router();
@@ -19,9 +19,10 @@ const extractPublicId = (url: string): string | null => {
 // Helper function to determine resource type from URL or messageType
 const getResourceType = (messageType: string, url?: string): 'image' | 'video' | 'raw' => {
     if (messageType === 'image') return 'image';
-    if (messageType === 'audio') return 'video';
+    if (messageType === 'audio') return 'video'; // Audio files are stored as 'video' in Cloudinary
     if (messageType === 'video') return 'video';
 
+    // Fallback: determine from URL extension
     if (url) {
         if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(url)) return 'image';
         if (/\.(mp3|wav|m4a|aac|ogg|mp4|avi|mov|webm)$/i.test(url)) return 'video';
@@ -30,7 +31,7 @@ const getResourceType = (messageType: string, url?: string): 'image' | 'video' |
     return 'raw';
 };
 
-// Delete single message
+// Delete single message (handles both MongoDB and Cloudinary deletion)
 router.delete('/messages/:messageId', async (req: Request, res: Response) => {
     try {
         const { messageId } = req.params;
@@ -40,7 +41,7 @@ router.delete('/messages/:messageId', async (req: Request, res: Response) => {
             messageId,
             conversation_id,
             messageType,
-            mediaUrl
+            hasMedia: !!mediaUrl
         });
 
         if (!messageId) {
@@ -59,8 +60,54 @@ router.delete('/messages/:messageId', async (req: Request, res: Response) => {
 
         let messageFoundInDB = false;
         let cloudinaryDeleted = false;
+        let cloudinaryAttempted = false;
 
-        // Delete message from the conversation's messages array
+        // STEP 1: Delete from Cloudinary FIRST (if media exists)
+        // This ensures media is deleted even if DB deletion fails
+        if (mediaUrl && ['image', 'audio', 'video'].includes(messageType)) {
+            cloudinaryAttempted = true;
+            const publicId = extractPublicId(mediaUrl);
+
+            if (publicId) {
+                const resourceType = getResourceType(messageType, mediaUrl);
+
+                console.log(`☁️ Deleting from Cloudinary:`, {
+                    publicId,
+                    resourceType,
+                    messageType,
+                    messageId
+                });
+
+                try {
+                    const result: CloudinaryDeleteResult = await cloudinary.uploader.destroy(
+                        publicId,
+                        {
+                            resource_type: resourceType,
+                            invalidate: true
+                        }
+                    );
+
+                    console.log('📥 Cloudinary deletion result:', result);
+
+                    if (result.result === 'ok') {
+                        console.log('✅ Successfully deleted from Cloudinary:', publicId);
+                        cloudinaryDeleted = true;
+                    } else if (result.result === 'not found') {
+                        console.log('⚠️ Media not found in Cloudinary (may already be deleted):', publicId);
+                        cloudinaryDeleted = true; // Consider this a success
+                    } else {
+                        console.warn('⚠️ Unexpected Cloudinary result:', result);
+                    }
+                } catch (cloudinaryError: any) {
+                    console.error('❌ Cloudinary deletion error:', cloudinaryError);
+                    // Don't return error here - continue to delete from DB
+                }
+            } else {
+                console.warn('⚠️ Could not extract public_id from URL:', mediaUrl);
+            }
+        }
+
+        // STEP 2: Delete message from MongoDB
         try {
             const result = await Conversation.findByIdAndUpdate(
                 conversation_id,
@@ -84,6 +131,13 @@ router.delete('/messages/:messageId', async (req: Request, res: Response) => {
                         lastMessageContent: lastMsg.content,
                         lastMessageType: lastMsg.messageType
                     });
+                } else {
+                    // No messages left, clear lastMessage fields
+                    await Conversation.findByIdAndUpdate(conversation_id, {
+                        lastMessage: null,
+                        lastMessageContent: null,
+                        lastMessageType: null
+                    });
                 }
             } else {
                 console.log('⚠️ Conversation not found:', conversation_id);
@@ -94,71 +148,38 @@ router.delete('/messages/:messageId', async (req: Request, res: Response) => {
             } else {
                 console.error('❌ Database error:', dbError);
             }
-            // Continue to delete from Cloudinary anyway
+            // If Cloudinary deletion succeeded but DB failed, still return partial success
         }
 
-        // Delete from Cloudinary if media exists (regardless of DB status)
-        if (mediaUrl && ['image', 'audio', 'video'].includes(messageType)) {
-            const publicId = extractPublicId(mediaUrl);
-
-            if (publicId) {
-                const resourceType = getResourceType(messageType, mediaUrl);
-
-                console.log(`🗑️ Deleting media from Cloudinary:`, {
-                    publicId,
-                    resourceType,
-                    messageId,
-                    originalUrl: mediaUrl
-                });
-
-                try {
-                    const result: CloudinaryDeleteResult = await cloudinary.uploader.destroy(
-                        publicId,
-                        {
-                            resource_type: resourceType,
-                            invalidate: true
-                        }
-                    );
-
-                    console.log('Cloudinary deletion result:', result);
-
-                    if (result.result === 'ok') {
-                        console.log('✅ Successfully deleted from Cloudinary:', publicId);
-                        cloudinaryDeleted = true;
-                    } else if (result.result === 'not found') {
-                        console.log('⚠️ Media not found in Cloudinary (may already be deleted):', publicId);
-                    } else {
-                        console.warn('⚠️ Unexpected Cloudinary result:', result);
-                    }
-                } catch (cloudinaryError: any) {
-                    console.error('❌ Cloudinary deletion error:', cloudinaryError);
-                    return res.status(500).json({
-                        success: false,
-                        message: `Cloudinary deletion failed: ${cloudinaryError.message}`
-                    });
-                }
-            } else {
-                console.warn('⚠️ Could not extract public_id from URL:', mediaUrl);
-            }
-        }
-
-        // Return success if either DB or Cloudinary deletion succeeded
-        if (messageFoundInDB || cloudinaryDeleted) {
-            return res.json({
-                success: true,
-                message: messageFoundInDB
-                    ? 'Message deleted from database and Cloudinary'
-                    : 'Media deleted from Cloudinary',
-                deletedMessageId: messageId,
-                deletedFromDB: messageFoundInDB,
-                deletedFromCloudinary: cloudinaryDeleted
+        // STEP 3: Return appropriate response
+        if (cloudinaryAttempted && !cloudinaryDeleted && !messageFoundInDB) {
+            // Both operations failed
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to delete message from both database and cloud storage'
             });
-        } else {
+        }
+
+        if (!messageFoundInDB && !cloudinaryAttempted) {
+            // Nothing to delete
             return res.status(404).json({
                 success: false,
-                message: 'Message not found in database and no media to delete'
+                message: 'Message not found in database'
             });
         }
+
+        // At least one operation succeeded
+        return res.json({
+            success: true,
+            message: messageFoundInDB && cloudinaryDeleted
+                ? 'Message deleted from database and cloud storage'
+                : messageFoundInDB
+                    ? 'Message deleted from database'
+                    : 'Media deleted from cloud storage',
+            deletedMessageId: messageId,
+            deletedFromDB: messageFoundInDB,
+            deletedFromCloudinary: cloudinaryDeleted
+        });
 
     } catch (error: any) {
         console.error('❌ Message deletion error:', error);
@@ -181,6 +202,8 @@ router.post('/messages/batch-delete', async (req: Request, res: Response) => {
             });
         }
 
+        console.log(`🗑️ Batch delete request for ${messages.length} message(s)`);
+
         let deletedCount = 0;
         let failedCount = 0;
         const errors: string[] = [];
@@ -188,8 +211,32 @@ router.post('/messages/batch-delete', async (req: Request, res: Response) => {
         for (const msg of messages) {
             try {
                 let deleted = false;
+                let cloudinaryDeleted = false;
 
-                // Try to delete from database
+                // Delete from Cloudinary first (if media exists)
+                if (msg.mediaUrl && ['image', 'audio', 'video'].includes(msg.messageType)) {
+                    const publicId = extractPublicId(msg.mediaUrl);
+                    if (publicId) {
+                        const resourceType = getResourceType(msg.messageType, msg.mediaUrl);
+
+                        try {
+                            const result = await cloudinary.uploader.destroy(publicId, {
+                                resource_type: resourceType,
+                                invalidate: true
+                            });
+
+                            if (result.result === 'ok' || result.result === 'not found') {
+                                console.log('✅ Deleted from Cloudinary:', publicId);
+                                cloudinaryDeleted = true;
+                                deleted = true;
+                            }
+                        } catch (cloudinaryError) {
+                            console.error('❌ Cloudinary error for:', publicId, cloudinaryError);
+                        }
+                    }
+                }
+
+                // Delete from database
                 if (msg.conversation_id) {
                     try {
                         const result = await Conversation.findByIdAndUpdate(
@@ -213,6 +260,12 @@ router.post('/messages/batch-delete', async (req: Request, res: Response) => {
                                     lastMessageContent: lastMsg.content,
                                     lastMessageType: lastMsg.messageType
                                 });
+                            } else {
+                                await Conversation.findByIdAndUpdate(msg.conversation_id, {
+                                    lastMessage: null,
+                                    lastMessageContent: null,
+                                    lastMessageType: null
+                                });
                             }
                         }
                     } catch (dbError: any) {
@@ -222,33 +275,11 @@ router.post('/messages/batch-delete', async (req: Request, res: Response) => {
                     }
                 }
 
-                // Delete from Cloudinary
-                if (msg.mediaUrl && ['image', 'audio', 'video'].includes(msg.messageType)) {
-                    const publicId = extractPublicId(msg.mediaUrl);
-                    if (publicId) {
-                        const resourceType = getResourceType(msg.messageType, msg.mediaUrl);
-
-                        try {
-                            const result = await cloudinary.uploader.destroy(publicId, {
-                                resource_type: resourceType,
-                                invalidate: true
-                            });
-
-                            if (result.result === 'ok') {
-                                console.log('✅ Deleted from Cloudinary:', publicId);
-                                deleted = true;
-                            }
-                        } catch (cloudinaryError) {
-                            console.error('❌ Cloudinary error for:', publicId, cloudinaryError);
-                        }
-                    }
-                }
-
                 if (deleted) {
                     deletedCount++;
                 } else {
                     failedCount++;
-                    errors.push(`Nothing to delete for ${msg.messageId}`);
+                    errors.push(`Failed to delete message ${msg.messageId}`);
                 }
 
             } catch (error: any) {
@@ -257,8 +288,14 @@ router.post('/messages/batch-delete', async (req: Request, res: Response) => {
             }
         }
 
+        console.log('✅ Batch delete completed:', {
+            total: messages.length,
+            deleted: deletedCount,
+            failed: failedCount
+        });
+
         return res.json({
-            success: true,
+            success: deletedCount > 0,
             deletedCount,
             failedCount,
             errors: errors.length > 0 ? errors : undefined
