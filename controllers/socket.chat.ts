@@ -45,17 +45,16 @@ class SocketManager {
         return Math.floor((new Date().getTime() - new Date(startTime).getTime()) / 1000);
     }
 
-    // Authentication middleware
     public authMiddleware = (socket: any, next: Function) => {
-        const token = socket.handshake.auth.token;
-        console.log('🔐 Socket connection attempt with token:', token ? 'Present' : 'Missing');
-
-        if (!token) {
-            console.log('❌ Authentication error: No token provided');
-            return next(new Error('Authentication error: No token provided'));
-        }
-
         try {
+            const token = socket.handshake.auth.token;
+            console.log('🔐 Socket connection attempt with token:', token ? 'Present' : 'Missing');
+
+            if (!token) {
+                console.log('❌ Authentication error: No token provided');
+                return next(new Error('Authentication error: No token provided'));
+            }
+
             const decoded = JWT.verify(token, process.env.JWT_SECRET!) as any;
             socket.data.userId = decoded.userId;
             console.log('✅ User authenticated:', socket.data.userId);
@@ -66,31 +65,37 @@ class SocketManager {
         }
     }
 
-    // Handle connection
     public handleConnection = (io: Server, socket: Socket) => {
         const userId = socket.data.userId;
+        console.log(`🎯 New socket connection - User: ${userId}, Socket ID: ${socket.id}`);
 
-        // Track connected user
         this.connectedUsers.set(userId, {
             userId,
             socketId: socket.id,
             activeConversations: []
         });
 
-        // Join user to their own room for private messages
         socket.join(userId);
 
-        // Send connection confirmation
         socket.emit('connected', {
             message: 'Successfully connected to socket server',
-            userId: userId
+            userId: userId,
+            socketId: socket.id,
+            timestamp: new Date().toISOString()
+        });
+
+        socket.emit('test_event', {
+            message: 'Connection test successful',
+            timestamp: new Date().toISOString()
         });
 
         console.log(`✅ User ${userId} connected. Total users: ${this.connectedUsers.size}`);
 
-        // ============================================
-        // CONVERSATION HANDLERS
-        // ============================================
+        socket.on('ping', (cb) => {
+            if (typeof cb === 'function') {
+                cb('pong');
+            }
+        });
 
         socket.on('join_conversation', (data: { otherUserId: string }) => {
             const { otherUserId } = data;
@@ -98,10 +103,8 @@ class SocketManager {
 
             console.log(`👥 User ${userId} joining conversation with ${otherUserId}`);
 
-            // Join conversation room
             socket.join(conversationId);
 
-            // Track active conversation
             if (!this.activeConversations.has(conversationId)) {
                 this.activeConversations.set(conversationId, {
                     participants: [userId, otherUserId],
@@ -109,23 +112,19 @@ class SocketManager {
                     lastActivity: new Date()
                 });
             } else {
-                // Update last activity
                 const conversation = this.activeConversations.get(conversationId)!;
                 conversation.lastActivity = new Date();
             }
 
-            // Update user's active conversations
             const userSocket = this.connectedUsers.get(userId);
             if (userSocket && !userSocket.activeConversations.includes(conversationId)) {
                 userSocket.activeConversations.push(conversationId);
             }
 
-            // Get connected users in this conversation
             const connectedInConversation = this.getConnectedUsersInConversation(conversationId);
 
             console.log(`📊 Connected users in conversation ${conversationId}:`, connectedInConversation);
 
-            // Notify both users about who's online in this conversation
             io.to(conversationId).emit('user_joined_conversation', {
                 userId: userId,
                 conversationId: conversationId,
@@ -148,7 +147,6 @@ class SocketManager {
 
             socket.leave(conversationId);
 
-            // Update user's active conversations
             const userSocket = this.connectedUsers.get(userId);
             if (userSocket) {
                 userSocket.activeConversations = userSocket.activeConversations.filter(
@@ -156,16 +154,11 @@ class SocketManager {
                 );
             }
 
-            // Notify other user
             io.to(conversationId).emit('user_left_conversation', {
                 userId: userId,
                 conversationId: conversationId
             });
         });
-
-        // ============================================
-        // MESSAGE HANDLERS
-        // ============================================
 
         socket.on('send_message', async (data: { receiverId: string; message: string; messageType?: string }) => {
             try {
@@ -173,7 +166,6 @@ class SocketManager {
                 const { receiverId, message, messageType } = data;
                 const conversationId = this.createConversationId(userId, receiverId);
 
-                // Ensure conversation exists
                 if (!this.activeConversations.has(conversationId)) {
                     this.activeConversations.set(conversationId, {
                         participants: [userId, receiverId],
@@ -182,16 +174,13 @@ class SocketManager {
                     });
                 }
 
-                // Update last activity
                 const conversation = this.activeConversations.get(conversationId)!;
                 conversation.lastActivity = new Date();
 
-                // Check if receiver is online
                 const isReceiverOnline = this.connectedUsers.has(receiverId);
 
                 console.log(`📊 Message from ${userId} to ${receiverId} - Receiver online: ${isReceiverOnline}`);
 
-                // Emit to conversation room (both users if online)
                 io.to(conversationId).emit('receive_message', {
                     senderId: userId,
                     message,
@@ -200,7 +189,6 @@ class SocketManager {
                     conversationId: conversationId
                 });
 
-                // Send confirmation to sender
                 socket.emit('message_sent', {
                     success: true,
                     message: 'Message sent successfully',
@@ -216,7 +204,6 @@ class SocketManager {
             }
         });
 
-        // Typing indicators
         socket.on('typing_start', (data: { receiverId: string }) => {
             const { receiverId } = data;
             const conversationId = this.createConversationId(userId, receiverId);
@@ -239,16 +226,11 @@ class SocketManager {
             });
         });
 
-        // ============================================
-        // CALL HANDLERS (PROPERLY USING io)
-        // ============================================
-
         socket.on('call:initiate', (data: Omit<CallData, 'recipientId'> & { recipientId: string }) => {
             const { callId, recipientId, callType, callerId, callerName, callerImage } = data;
 
             console.log(`📞 Call initiated: ${callId} from ${callerId} to ${recipientId}`);
 
-            // Validate that caller is the socket owner
             if (callerId !== userId) {
                 socket.emit('call:failed', {
                     callId,
@@ -257,7 +239,6 @@ class SocketManager {
                 return;
             }
 
-            // Check if recipient is online
             const recipientSocket = this.connectedUsers.get(recipientId);
             if (!recipientSocket) {
                 socket.emit('call:failed', {
@@ -267,7 +248,6 @@ class SocketManager {
                 return;
             }
 
-            // Check if recipient is already in a call
             const existingCall = Array.from(this.activeCalls.values()).find(
                 call => call.recipientId === recipientId
             );
@@ -280,7 +260,6 @@ class SocketManager {
                 return;
             }
 
-            // Store call data
             const callData: CallData = {
                 callId,
                 callType,
@@ -292,10 +271,8 @@ class SocketManager {
             };
             this.activeCalls.set(callId, callData);
 
-            // Send call invitation to recipient using io
             io.to(recipientId).emit('call:incoming', callData);
 
-            // Confirm to caller that invitation was sent
             socket.emit('call:initiated', {
                 callId,
                 recipientId,
@@ -310,7 +287,6 @@ class SocketManager {
 
             console.log(`✅ Call accepted: ${callId} by ${userId}`);
 
-            // Validate call exists
             const callData = this.activeCalls.get(callId);
             if (!callData) {
                 socket.emit('call:error', {
@@ -320,7 +296,6 @@ class SocketManager {
                 return;
             }
 
-            // Validate that acceptor is the intended recipient
             if (callData.recipientId !== userId) {
                 socket.emit('call:error', {
                     callId,
@@ -329,11 +304,10 @@ class SocketManager {
                 return;
             }
 
-            // Notify caller that call was accepted using io
             io.to(callerId).emit('call:accepted', {
                 callId,
                 acceptorId: userId,
-                acceptorName: 'User' // You might want to fetch this from DB
+                acceptorName: 'User'
             });
 
             console.log(`✅ Call ${callId} accepted successfully`);
@@ -346,10 +320,8 @@ class SocketManager {
 
             const callData = this.activeCalls.get(callId);
 
-            // Clean up call data
             this.activeCalls.delete(callId);
 
-            // Notify caller that call was rejected using io
             io.to(callerId).emit('call:rejected', {
                 callId,
                 reason: reason || 'Call rejected',
@@ -366,10 +338,8 @@ class SocketManager {
 
             const callData = this.activeCalls.get(callId);
 
-            // Clean up call data
             this.activeCalls.delete(callId);
 
-            // Notify other participant using io
             io.to(recipientId).emit('call:ended', {
                 callId,
                 endedBy: userId,
@@ -384,7 +354,6 @@ class SocketManager {
 
             console.log(`⏰ Call timeout: ${callId}`);
 
-            // Clean up call data
             this.activeCalls.delete(callId);
 
             io.to(recipientId).emit('call:timeout', {
@@ -392,16 +361,11 @@ class SocketManager {
             });
         });
 
-        // ============================================
-        // WEBRTC SIGNALING HANDLERS
-        // ============================================
-
         socket.on('webrtc:offer', (data: { callId: string; recipientId: string; offer: any }) => {
             const { callId, recipientId, offer } = data;
 
             console.log(`📤 Forwarding WebRTC offer for call: ${callId}`);
 
-            // Validate call exists
             if (!this.activeCalls.has(callId)) {
                 socket.emit('webrtc:error', {
                     callId,
@@ -422,7 +386,6 @@ class SocketManager {
 
             console.log(`📤 Forwarding WebRTC answer for call: ${callId}`);
 
-            // Validate call exists
             if (!this.activeCalls.has(callId)) {
                 socket.emit('webrtc:error', {
                     callId,
@@ -441,9 +404,8 @@ class SocketManager {
         socket.on('webrtc:ice-candidate', (data: { callId: string; recipientId: string; candidate: any }) => {
             const { callId, recipientId, candidate } = data;
 
-            // Validate call exists
             if (!this.activeCalls.has(callId)) {
-                return; // Silently fail for ICE candidates
+                return;
             }
 
             io.to(recipientId).emit('webrtc:ice-candidate', {
@@ -453,18 +415,12 @@ class SocketManager {
             });
         });
 
-        // ============================================
-        // DISCONNECT HANDLER
-        // ============================================
-
         socket.on('disconnect', (reason) => {
-            console.log('❌ User disconnected:', userId, 'Reason:', reason);
+            console.log('❌ User disconnected:', userId, 'Reason:', reason, 'Socket ID:', socket.id);
 
-            // Get user's active conversations before removing
             const userSocket = this.connectedUsers.get(userId);
             const activeConversationIds = userSocket?.activeConversations || [];
 
-            // Notify all active conversations about user leaving using io
             activeConversationIds.forEach(conversationId => {
                 io.to(conversationId).emit('user_left_conversation', {
                     userId: userId,
@@ -473,7 +429,6 @@ class SocketManager {
                 });
             });
 
-            // End any active calls the user was in
             this.activeCalls.forEach((callData, callId) => {
                 if (callData.callerId === userId || callData.recipientId === userId) {
                     const otherUserId = callData.callerId === userId ? callData.recipientId : callData.callerId;
@@ -489,7 +444,6 @@ class SocketManager {
                 }
             });
 
-            // Remove user from connected users
             this.connectedUsers.delete(userId);
 
             console.log(`👋 User ${userId} fully disconnected. Remaining users: ${this.connectedUsers.size}`);
@@ -497,16 +451,12 @@ class SocketManager {
     }
 }
 
-// Export the socket manager instance
 export const socketManager = new SocketManager();
 
-// Main socket handler function
 const socket_messages = (io: Server) => {
-    // Use the auth middleware
     io.use(socketManager.authMiddleware);
 
     io.on('connection', (socket: Socket) => {
-        // Handle the connection using our socket manager
         socketManager.handleConnection(io, socket);
     });
 };

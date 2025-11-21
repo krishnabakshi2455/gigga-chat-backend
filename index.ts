@@ -23,8 +23,12 @@ const port = 8000
 export const io = new Server(server, {
     cors: {
         origin: "*", // Allow all origins in development
-        methods: ["GET", "POST"]
-    }
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    connectTimeout: 30000,
 });
 
 app.use(cors());

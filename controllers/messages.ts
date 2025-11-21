@@ -4,7 +4,6 @@ import { Conversation } from '../models/messages';
 
 const router = express.Router();
 
-// Helper function to extract public_id from Cloudinary URL
 const extractPublicId = (url: string): string | null => {
     try {
         const matches = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
@@ -15,12 +14,10 @@ const extractPublicId = (url: string): string | null => {
     }
 };
 
-// Generate conversation ID from user IDs
 const generateConversationId = (userId1: string, userId2: string): string => {
     return [userId1, userId2].sort().join('_');
 };
 
-// Send a message (text, image, audio, video)
 router.post('/messages', async (req, res) => {
     try {
         const {
@@ -31,7 +28,6 @@ router.post('/messages', async (req, res) => {
             timestamp
         } = req.body;
 
-        // Validation
         if (!senderId || !receiverId || !messageType || !content) {
             return res.status(400).json({
                 success: false,
@@ -47,18 +43,15 @@ router.post('/messages', async (req, res) => {
         }
         const participants = [senderId, receiverId].sort();
 
-        // Find or create conversation
         let conversation = await Conversation.findOne({ participants });
 
         if (!conversation) {
-            // Create new conversation
             conversation = new Conversation({
                 participants,
                 messages: []
             });
         }
 
-        // Create new message
         const newMessage = {
             senderId,
             messageType,
@@ -67,17 +60,14 @@ router.post('/messages', async (req, res) => {
             isRead: false
         };
 
-        // Add message to conversation
         conversation.messages.push(newMessage);
 
-        // Update last message info
         conversation.lastMessage = new Date();
         conversation.lastMessageContent = content;
         conversation.lastMessageType = messageType;
 
         const savedConversation = await conversation.save();
 
-        // Get the newly added message
         const savedMessage = savedConversation.messages[savedConversation.messages.length - 1];
 
         res.status(201).json({
@@ -104,7 +94,6 @@ router.post('/messages', async (req, res) => {
     }
 });
 
-// Get messages between two users
 router.get('/messages/:userId/:recipientId', async (req, res) => {
     try {
         const { userId, recipientId } = req.params;
@@ -113,24 +102,19 @@ router.get('/messages/:userId/:recipientId', async (req, res) => {
 
         const participants = [userId, recipientId].sort();
 
-        // Find conversation
         const conversation = await Conversation.findOne({ participants });
-        // console.log("conversation", conversation);
-        
 
         if (!conversation) {
             return res.json({
                 success: true,
-                data: [] // No conversation exists yet
+                data: []
             });
         }
 
-        // Get messages with pagination
         const messages = conversation.messages
             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
             .slice(skip, skip + limit);
 
-        // Transform to frontend format
         const formattedMessages = messages.map(msg => ({
             conversation_id: conversation._id.toString(),
             _id: msg._id.toString(),
@@ -142,9 +126,7 @@ router.get('/messages/:userId/:recipientId', async (req, res) => {
             audioUrl: msg.messageType === 'audio' ? msg.content : undefined,
             content: msg.content,
             isRead: msg.isRead
-        })).reverse(); // Reverse to get chronological order
-        // console.log("formattedMessages", formattedMessages);
-        
+        })).reverse();
 
         res.json({
             success: true,
@@ -160,84 +142,6 @@ router.get('/messages/:userId/:recipientId', async (req, res) => {
     }
 });
 
-// Delete single message
-// router.delete('/messages/:messageId', async (req, res) => {
-//     try {
-//         const { messageId } = req.params;
-//         const { conversationId, messageType, mediaUrl } = req.body;
-
-//         console.log('📝 Delete request received:', {
-//             messageId,
-//             conversationId,
-//             messageType,
-//             mediaUrl
-//         });
-
-//         if (!messageId || !conversationId) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: 'Message ID and Conversation ID are required'
-//             });
-//         }
-
-//         let messageFound = false;
-//         let cloudinaryDeleted = false;
-
-//         // Find conversation and remove message
-//         const conversation = await Conversation.findById(conversationId);
-
-//         if (conversation) {
-//             const messageIndex = conversation.messages.findIndex(
-//                 msg => msg._id.toString() === messageId
-//             );
-
-//             if (messageIndex !== -1) {
-//                 conversation.messages.splice(messageIndex, 1);
-//                 await conversation.save();
-//                 messageFound = true;
-//                 console.log('✅ Message deleted from conversation:', messageId);
-//             }
-//         }
-
-//         // Delete from Cloudinary if media exists
-//         if (mediaUrl && ['image', 'audio', 'video'].includes(messageType)) {
-//             const publicId = extractPublicId(mediaUrl);
-
-//             if (publicId) {
-//                 try {
-//                     const resourceType = messageType === 'image' ? 'image' : 'video';
-//                     const result = await cloudinary.uploader.destroy(publicId, {
-//                         resource_type: resourceType,
-//                         invalidate: true
-//                     });
-
-//                     if (result.result === 'ok') {
-//                         cloudinaryDeleted = true;
-//                         console.log('✅ Cloudinary media deleted');
-//                     }
-//                 } catch (cloudinaryError) {
-//                     console.error('Cloudinary deletion error:', cloudinaryError);
-//                 }
-//             }
-//         }
-
-//         return res.json({
-//             success: true,
-//             message: 'Delete operation completed',
-//             deletedFromDB: messageFound,
-//             deletedFromCloudinary: cloudinaryDeleted
-//         });
-
-//     } catch (error: any) {
-//         console.error('Delete error:', error);
-//         res.status(500).json({
-//             success: false,
-//             message: `Internal server error: ${error.message}`
-//         });
-//     }
-// });
-
-// Get all conversations for a user
 router.get('/conversations/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
@@ -269,7 +173,6 @@ router.get('/conversations/:userId', async (req, res) => {
     }
 });
 
-// Keep your other routes (mark as read, unread count) with similar updates
 router.put('/:messageId/read', async (req, res) => {
     try {
         const { messageId } = req.params;
@@ -291,9 +194,8 @@ router.put('/:messageId/read', async (req, res) => {
             });
         }
 
-        // Find and mark message as read
         const message = conversation.messages.id(messageId);
-        if (message && message.senderId !== userId) { // Only mark if user is not the sender
+        if (message && message.senderId !== userId) {
             message.isRead = true;
             await conversation.save();
         }
