@@ -335,6 +335,6 @@ app.get("/friends/:userId", async (req, res) => {
 })
 
 server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
+    console.log(`Server running on ${port}`);
     console.log(`WebSocket server ready for connections`);
 });
