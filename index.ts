@@ -2,7 +2,6 @@ import express from 'express';
 import mongoose from 'mongoose';
 import bodyparser from "body-parser";
 import passport from "passport"
-import { Strategy as LocalStrategy } from 'passport-local';
 import cors from "cors"
 import JWT from "jsonwebtoken"
 import dotenv from "dotenv";
@@ -17,6 +16,7 @@ import delete_message from './controllers/delete-message'
 dotenv.config();
 const app = express();
 const jwtsecret = process.env.JWT_SECRET || ""
+const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "10h"
 const server = http.createServer(app);
 const port = 8000
 
@@ -92,7 +92,7 @@ app.post("/googleauth", async (req, res) => {
 
         if (existingUser) {
             // Generate token for existing user
-            const token = JWT.sign({ userId: existingUser._id }, jwtsecret, { expiresIn: "30m" });
+            const token = JWT.sign({ userId: existingUser._id }, jwtsecret, { expiresIn: jwtExpiresIn as any });
             return res.status(200).json({
                 message: "User logged in successfully",
                 token,
@@ -104,7 +104,7 @@ app.post("/googleauth", async (req, res) => {
         await newUser.save();
 
         // Generate token for new user
-        const token = JWT.sign({ userId: newUser._id }, jwtsecret, { expiresIn: "30m" });
+        const token = JWT.sign({ userId: newUser._id }, jwtsecret, { expiresIn: jwtExpiresIn as any });
         res.status(200).json({
             message: "Google user registered successfully",
             token,
@@ -124,7 +124,7 @@ const createToken = (userId: any) => {
     };
 
     // Generate the token with a secret key and expiration time
-    const token = JWT.sign(payload, jwtsecret, { expiresIn: "30m" });
+    const token = JWT.sign(payload, jwtsecret, { expiresIn: jwtExpiresIn as any });
 
     return token;
 };
