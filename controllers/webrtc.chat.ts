@@ -115,7 +115,7 @@ class CallHandler {
         this.callTimeouts.set(callId, timeout);
 
         // Send call invitation to recipient
-        this.io.to(recipientId).emit('incoming:call', {
+        this.io.to(recipientId).emit('call:incoming', {
             callId,
             callType,
             callerId,

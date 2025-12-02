@@ -18,7 +18,7 @@ const app = express();
 const jwtsecret = process.env.JWT_SECRET || ""
 const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "10h"
 const server = http.createServer(app);
-const port = process.env.PORT || 8000
+const port = process.env.PORT
 
 export const io = new Server(server, {
     cors: {

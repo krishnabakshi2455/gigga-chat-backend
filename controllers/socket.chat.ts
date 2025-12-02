@@ -20,6 +20,7 @@ interface CallData {
     callerName: string;
     callerImage?: string;
     recipientId: string;
+    recipientName: string;
     timestamp: string;
 }
 
@@ -27,6 +28,7 @@ class SocketManager {
     private activeConversations = new Map<string, ActiveConversation>();
     private connectedUsers = new Map<string, UserSocket>();
     private activeCalls = new Map<string, CallData>();
+    private callTimeouts = new Map<string, NodeJS.Timeout>();
 
     private createConversationId(userId1: string, userId2: string): string {
         return [userId1, userId2].sort().join('_');
@@ -43,6 +45,14 @@ class SocketManager {
 
     private getCallDuration(startTime: string): number {
         return Math.floor((new Date().getTime() - new Date(startTime).getTime()) / 1000);
+    }
+
+    private clearCallTimeout(callId: string) {
+        const timeout = this.callTimeouts.get(callId);
+        if (timeout) {
+            clearTimeout(timeout);
+            this.callTimeouts.delete(callId);
+        }
     }
 
     public authMiddleware = (socket: any, next: Function) => {
@@ -226,8 +236,8 @@ class SocketManager {
             });
         });
 
-        socket.on('call:initiate', (data: Omit<CallData, 'recipientId'> & { recipientId: string }) => {
-            const { callId, recipientId, callType, callerId, callerName, callerImage } = data;
+        socket.on('call:initiate', (data: Omit<CallData, 'timestamp'>) => {
+            const { callId, recipientId, callType, callerId, callerName, callerImage, recipientName } = data;
 
             console.log(`📞 Call initiated: ${callId} from ${callerId} to ${recipientId}`);
 
@@ -267,9 +277,33 @@ class SocketManager {
                 callerName,
                 callerImage,
                 recipientId,
+                recipientName,
                 timestamp: new Date().toISOString()
             };
+
             this.activeCalls.set(callId, callData);
+
+            const timeout = setTimeout(() => {
+                const call = this.activeCalls.get(callId);
+                if (call) {
+                    console.log(`⏰ Auto timeout for call: ${callId}`);
+
+                    io.to(call.callerId).emit('call:timeout', {
+                        callId,
+                        reason: 'No answer from recipient'
+                    });
+
+                    io.to(call.recipientId).emit('call:timeout', {
+                        callId,
+                        reason: 'Call timed out'
+                    });
+
+                    this.activeCalls.delete(callId);
+                    this.callTimeouts.delete(callId);
+                }
+            }, 30000);
+
+            this.callTimeouts.set(callId, timeout);
 
             io.to(recipientId).emit('call:incoming', callData);
 
@@ -304,6 +338,8 @@ class SocketManager {
                 return;
             }
 
+            this.clearCallTimeout(callId);
+
             io.to(callerId).emit('call:accepted', {
                 callId,
                 acceptorId: userId,
@@ -321,6 +357,7 @@ class SocketManager {
             const callData = this.activeCalls.get(callId);
 
             this.activeCalls.delete(callId);
+            this.clearCallTimeout(callId);
 
             io.to(callerId).emit('call:rejected', {
                 callId,
@@ -339,6 +376,7 @@ class SocketManager {
             const callData = this.activeCalls.get(callId);
 
             this.activeCalls.delete(callId);
+            this.clearCallTimeout(callId);
 
             io.to(recipientId).emit('call:ended', {
                 callId,
@@ -352,9 +390,10 @@ class SocketManager {
         socket.on('call:timeout', (data: { callId: string; recipientId: string }) => {
             const { callId, recipientId } = data;
 
-            console.log(`⏰ Call timeout: ${callId}`);
+            console.log(`⏰ Manual call timeout: ${callId}`);
 
             this.activeCalls.delete(callId);
+            this.clearCallTimeout(callId);
 
             io.to(recipientId).emit('call:timeout', {
                 callId
@@ -436,10 +475,12 @@ class SocketManager {
                     io.to(otherUserId).emit('call:ended', {
                         callId,
                         endedBy: userId,
-                        reason: 'User disconnected'
+                        reason: 'User disconnected',
+                        duration: this.getCallDuration(callData.timestamp)
                     });
 
                     this.activeCalls.delete(callId);
+                    this.clearCallTimeout(callId);
                     console.log(`📴 Call ${callId} ended due to user disconnect`);
                 }
             });
